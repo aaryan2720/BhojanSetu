@@ -49,20 +49,31 @@ const listingController = {
           // Delete the local file after upload
           fs.unlinkSync(req.file.path);
         } catch (uploadError) {
-          console.error('Cloudinary upload error:', uploadError);
-          return res.status(500).json({ message: 'Error uploading image' });
+          console.error('Cloudinary upload error details:', uploadError);
+          // Still create the listing without the image if there's an upload error
+          console.warn('Proceeding without image due to upload error');
         }
+      }
+
+      // Add price information
+      listingData.priceType = req.body.priceType;
+      if (req.body.priceType === 'discounted') {
+        listingData.originalPrice = req.body.originalPrice;
+        listingData.discountedPrice = req.body.discountedPrice;
       }
 
       const listing = new FoodListing(listingData);
       await listing.save();
 
-      // Populate donor information before sending response
-      await listing.populate('donor', 'name organization');
+      // Emit real-time update
+      const io = req.app.get('io');
+      io.emit('new_listing', {
+        listing: await listing.populate('donor', 'name organization')
+      });
 
       res.status(201).json(listing);
     } catch (error) {
-      console.warn('Error creating listing:', error);
+      console.error('Error creating listing:', error);
       res.status(400).json({ message: error.message });
     }
   },
@@ -94,56 +105,20 @@ const listingController = {
   // Reserve a listing
   async reserveListing(req, res) {
     try {
-      const listing = await FoodListing.findById(req.params.id)
-        .populate('donor', 'name organization email');
-      
-      if (!listing) {
-        return res.status(404).json({ message: 'Listing not found' });
-      }
+      const listing = await FoodListing.findById(req.params.id);
+      const success = await listing.processReservation(req.user.id);
 
-      if (listing.status !== 'available') {
-        return res.status(400).json({ message: 'Listing is not available' });
-      }
-
-      // Get seeker information
-      const seeker = await User.findById(req.user.id).select('name organization phone');
-
-      listing.status = 'reserved';
-      listing.reservedBy = req.user.id;
-      listing.reservedAt = new Date();
-      await listing.save();
-
-      // Create notification for donor
-      const notification = await notificationController.createNotification(
-        listing.donor._id,
-        'reservation',
-        listing._id,
-        `${seeker.name} from ${seeker.organization} has reserved your food listing "${listing.title}"`,
-        req.app.get('io')
-      );
-
-      // Send email notification (if you have email service set up)
-      // sendEmail(listing.donor.email, 'Food Listing Reserved', ...);
-
-      // Emit socket event with seeker details
+      // Emit real-time update
       const io = req.app.get('io');
-      io.to(listing.donor._id.toString()).emit('listing_reserved', {
+      io.emit('listing_updated', {
         listingId: listing._id,
-        reservedBy: {
-          name: seeker.name,
-          organization: seeker.organization,
-          phone: seeker.phone
-        },
-        title: listing.title
+        status: listing.status,
+        reservationQueue: listing.reservationQueue
       });
 
-      res.json({
-        ...listing.toObject(),
-        reservedBy: seeker
-      });
+      res.json({ success, listing });
     } catch (error) {
-      console.error('Error reserving listing:', error);
-      res.status(500).json({ message: 'Server error' });
+      res.status(400).json({ message: error.message });
     }
   },
 

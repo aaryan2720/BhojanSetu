@@ -4,6 +4,7 @@ const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
 require('dotenv').config();
+const reminderService = require('./src/services/reminderService');
 
 const app = express();
 const server = http.createServer(app);
@@ -44,9 +45,13 @@ mongoose.connect(process.env.MONGODB_URI, {
 .then(() => console.log('Connected to MongoDB'))
 .catch(err => console.error('MongoDB connection error:', err));
 
-// Routes (to be added)
+// Routes
 app.use('/api/users', require('./src/routes/users'));
 app.use('/api/listings', require('./src/routes/listings'));
+app.use('/api/events', require('./src/routes/events'));
+
+// Initialize reminder service
+reminderService.initialize();
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {

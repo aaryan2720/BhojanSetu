@@ -32,6 +32,9 @@ const CreateListing = () => {
         coordinates: [0, 0]
       }
     },
+    priceType: 'free', // Add default price type
+    originalPrice: '',
+    discountedPrice: '',
     image: null
   });
 
@@ -47,13 +50,13 @@ const CreateListing = () => {
     setFormData(prev => ({
       ...prev,
       pickupAddress: {
-        ...location,
+        street: location.street || '',
+        city: location.city || '',
+        state: location.state || '',
+        zipCode: location.zipCode || '',
         location: {
           type: 'Point',
-          coordinates: [
-            location.longitude || 78.9629, // Default longitude for India
-            location.latitude || 20.5937   // Default latitude for India
-          ]
+          coordinates: location.location?.coordinates || [location.longitude || 78.9629, location.latitude || 20.5937]
         }
       }
     }));
@@ -73,6 +76,15 @@ const CreateListing = () => {
     try {
       const formDataToSend = new FormData();
 
+      // Validate required fields
+      if (!formData.pickupAddress?.street || 
+          !formData.pickupAddress?.city || 
+          !formData.pickupAddress?.state || 
+          !formData.pickupAddress?.zipCode) {
+        setError('Please select a complete address using the map');
+        return;
+      }
+
       // Add all fields to FormData
       formDataToSend.append('title', formData.title);
       formDataToSend.append('description', formData.description);
@@ -80,27 +92,23 @@ const CreateListing = () => {
       formDataToSend.append('unit', formData.unit);
       formDataToSend.append('category', formData.category);
       formDataToSend.append('expiryDate', formData.expiryDate.toISOString());
+      formDataToSend.append('priceType', formData.priceType);
+      
+      if (formData.priceType === 'discounted') {
+        formDataToSend.append('originalPrice', formData.originalPrice);
+        formDataToSend.append('discountedPrice', formData.discountedPrice);
+      }
+
       formDataToSend.append('pickupTimeWindow', JSON.stringify({
         start: formData.pickupTimeWindow.start,
         end: formData.pickupTimeWindow.end
       }));
+
       formDataToSend.append('pickupAddress', JSON.stringify(formData.pickupAddress));
 
       if (formData.image) {
         formDataToSend.append('image', formData.image);
       }
-
-      // Log the data being sent
-      console.log('Sending data:', {
-        title: formData.title,
-        description: formData.description,
-        quantity: formData.quantity,
-        unit: formData.unit,
-        category: formData.category,
-        expiryDate: formData.expiryDate,
-        pickupTimeWindow: formData.pickupTimeWindow,
-        pickupAddress: formData.pickupAddress
-      });
 
       const response = await axios.post('http://localhost:5000/api/listings', formDataToSend, {
         headers: {
@@ -252,6 +260,48 @@ const CreateListing = () => {
                   />
                 </Button>
               </Grid>
+
+              <Grid item xs={12}>
+                <FormControl fullWidth>
+                  <InputLabel>Price Type</InputLabel>
+                  <Select
+                    name="priceType"
+                    value={formData.priceType}
+                    onChange={handleChange}
+                    required
+                  >
+                    <MenuItem value="free">Free</MenuItem>
+                    <MenuItem value="discounted">Discounted</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              {formData.priceType === 'discounted' && (
+                <>
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      fullWidth
+                      label="Original Price"
+                      name="originalPrice"
+                      type="number"
+                      value={formData.originalPrice}
+                      onChange={handleChange}
+                      required
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      fullWidth
+                      label="Discounted Price"
+                      name="discountedPrice"
+                      type="number"
+                      value={formData.discountedPrice}
+                      onChange={handleChange}
+                      required
+                    />
+                  </Grid>
+                </>
+              )}
 
               {error && (
                 <Grid item xs={12}>

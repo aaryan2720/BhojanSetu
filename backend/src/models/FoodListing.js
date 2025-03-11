@@ -93,7 +93,45 @@ const foodListingSchema = new mongoose.Schema({
     ref: 'User'
   },
   reservedAt: Date,
-  completedAt: Date
+  completedAt: Date,
+  priceType: {
+    type: String,
+    enum: ['free', 'discounted'],
+    default: 'free'
+  },
+  originalPrice: {
+    type: Number,
+    required: function() {
+      return this.priceType === 'discounted';
+    }
+  },
+  discountedPrice: {
+    type: Number,
+    required: function() {
+      return this.priceType === 'discounted';
+    },
+    validate: {
+      validator: function(value) {
+        return this.priceType !== 'discounted' || value < this.originalPrice;
+      },
+      message: 'Discounted price must be less than original price'
+    }
+  },
+  reservationQueue: [{
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    requestedAt: {
+      type: Date,
+      default: Date.now
+    },
+    status: {
+      type: String,
+      enum: ['pending', 'accepted', 'rejected', 'expired'],
+      default: 'pending'
+    }
+  }]
 }, {
   timestamps: true
 });
@@ -106,6 +144,31 @@ foodListingSchema.index({ donor: 1 });
 // Add method to check if listing can be reserved
 foodListingSchema.methods.canBeReserved = function() {
   return this.status === 'available' && new Date(this.expiryDate) > new Date();
+};
+
+// Add method to handle first-come-first-serve
+foodListingSchema.methods.processReservation = async function(userId) {
+  if (this.status !== 'available') {
+    throw new Error('This listing is no longer available');
+  }
+
+  // Add to reservation queue
+  this.reservationQueue.push({
+    user: userId,
+    requestedAt: new Date(),
+    status: 'pending'
+  });
+
+  // If this is the first reservation, automatically accept it
+  if (this.reservationQueue.length === 1) {
+    this.reservationQueue[0].status = 'accepted';
+    this.status = 'reserved';
+    this.reservedBy = userId;
+    this.reservedAt = new Date();
+  }
+
+  await this.save();
+  return this.reservationQueue[0].status === 'accepted';
 };
 
 const FoodListing = mongoose.model('FoodListing', foodListingSchema);

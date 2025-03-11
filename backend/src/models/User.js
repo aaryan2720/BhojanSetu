@@ -1,5 +1,17 @@
 const mongoose = require('mongoose');
 
+const verificationRequestSchema = new mongoose.Schema({
+  documents: [{
+    type: String,  // URLs to uploaded documents
+    required: true
+  }],
+  requestDate: {
+    type: Date,
+    default: Date.now
+  },
+  message: String
+}, { _id: false });
+
 const userSchema = new mongoose.Schema({
   name: {
     type: String,
@@ -19,51 +31,24 @@ const userSchema = new mongoose.Schema({
   },
   userType: {
     type: String,
-    enum: ['donor', 'ngo', 'seeker'],
+    enum: ['donor', 'ngo', 'seeker', 'eventManager', 'admin'],
     required: true
   },
   organization: {
     type: String,
     required: function() {
-      return this.userType === 'donor' || this.userType === 'ngo';
+      return ['donor', 'ngo', 'eventManager'].includes(this.userType);
     },
     trim: true
   },
   address: {
-    street: {
-      type: String,
-      required: function() {
-        return this.userType !== 'seeker';
-      },
-      trim: true
-    },
-    city: {
-      type: String,
-      required: true,
-      trim: true
-    },
-    state: {
-      type: String,
-      required: true,
-      trim: true
-    },
-    zipCode: {
-      type: String,
-      required: function() {
-        return this.userType !== 'seeker';
-      },
-      trim: true
-    },
-    location: {
-      type: {
-        type: String,
-        enum: ['Point'],
-        default: 'Point'
-      },
-      coordinates: {
-        type: [Number],
-        default: [0, 0]
-      }
+    street: { type: String, required: false },
+    city: { type: String, required: false },
+    state: { type: String, required: false },
+    zipCode: { type: String, required: false },
+    coordinates: {
+      type: { type: String, default: 'Point' },
+      coordinates: [Number]
     }
   },
   phone: {
@@ -85,15 +70,30 @@ const userSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
-  verificationDocument: {
-    url: String,
-    publicId: String
+  verificationStatus: {
+    type: String,
+    enum: ['pending', 'approved', 'rejected', 'not_submitted'],
+    default: 'not_submitted'
   },
-  isVerified: {
-    type: Boolean,
-    default: function() {
-      return this.userType !== 'ngo';
+  verificationRequest: verificationRequestSchema,
+  verificationNotes: String,
+  verifiedAt: Date,
+  verificationDocuments: [{
+    type: {
+      type: String,
+      enum: ['registration', 'license', 'other'],
+      required: true
+    },
+    url: String,
+    publicId: String,
+    uploadedAt: {
+      type: Date,
+      default: Date.now
     }
+  }],
+  verifiedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
   },
   lastActive: {
     type: Date,

@@ -12,31 +12,40 @@ const LocationPicker = ({ onLocationSelect }) => {
     city: '',
     state: '',
     zipCode: '',
-    // Default coordinates for India
     latitude: 20.5937,
-    longitude: 78.9629
+    longitude: 78.9629,
+    location: {
+      type: 'Point',
+      coordinates: [78.9629, 20.5937]
+    }
   });
 
   useEffect(() => {
-    if (!mapRef.current) return;
+    if (!mapRef.current || mapInstanceRef.current) return;
 
-    // Custom marker icon
-    const customIcon = L.icon({
-      iconUrl: '/marker-icon.png', // Add this icon to your public folder
-      iconSize: [25, 41],
-      iconAnchor: [12, 41],
-      popupAnchor: [1, -34],
-      shadowSize: [41, 41]
-    });
+    try {
+      delete L.Icon.Default.prototype._getIconUrl;
+      L.Icon.Default.mergeOptions({
+        iconRetinaUrl: require('leaflet/dist/images/marker-icon-2x.png'),
+        iconUrl: require('leaflet/dist/images/marker-icon.png'),
+        shadowUrl: require('leaflet/dist/images/marker-shadow.png'),
+      });
 
-    // Center map on India
-    mapInstanceRef.current = L.map(mapRef.current).setView([address.latitude, address.longitude], 5);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapInstanceRef.current);
+      const map = L.map(mapRef.current).setView([address.latitude, address.longitude], 5);
+      mapInstanceRef.current = map;
 
-    // Add initial marker
-    markerRef.current = L.marker([address.latitude, address.longitude], { icon: customIcon }).addTo(mapInstanceRef.current);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+      }).addTo(map);
 
-    mapInstanceRef.current.on('click', handleMapClick);
+      const marker = L.marker([address.latitude, address.longitude]).addTo(map);
+      markerRef.current = marker;
+
+      map.on('click', handleMapClick);
+
+    } catch (error) {
+      console.error('Error initializing map:', error);
+    }
 
     return () => {
       if (mapInstanceRef.current) {
@@ -59,30 +68,38 @@ const LocationPicker = ({ onLocationSelect }) => {
       const data = await response.json();
 
       const newAddress = {
-        street: data.address.road || '',
-        city: data.address.city || data.address.town || '',
-        state: data.address.state || '',
-        zipCode: data.address.postcode || '',
+        street: data.address.road || data.address.street || 'Unknown Street',
+        city: data.address.city || data.address.town || data.address.village || 'Unknown City',
+        state: data.address.state || 'Unknown State',
+        zipCode: data.address.postcode || 'Unknown Postal',
         latitude: lat,
-        longitude: lng
+        longitude: lng,
+        location: {
+          type: 'Point',
+          coordinates: [lng, lat]
+        }
       };
 
       setAddress(newAddress);
-      onLocationSelect(newAddress);
+      onLocationSelect && onLocationSelect(newAddress);
       
-      // Update marker position
       if (markerRef.current) {
         markerRef.current.setLatLng([lat, lng]);
       }
       
-      // Center map on new location
-      mapInstanceRef.current.setView([lat, lng], 16);
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.setView([lat, lng], 16);
+      }
     } catch (error) {
       console.error('Error getting address:', error);
     }
   };
 
   const handleAddressSearch = async () => {
+    if (!address.street || !address.city || !address.state) {
+      return;
+    }
+
     const searchQuery = `${address.street}, ${address.city}, ${address.state}, ${address.zipCode}`;
     try {
       const response = await fetch(
@@ -101,7 +118,9 @@ const LocationPicker = ({ onLocationSelect }) => {
 
   const handleAddressChange = (e) => {
     const { name, value } = e.target;
-    setAddress(prev => ({ ...prev, [name]: value }));
+    const newAddress = { ...address, [name]: value };
+    setAddress(newAddress);
+    onLocationSelect && onLocationSelect(newAddress);
   };
 
   return (
@@ -124,6 +143,8 @@ const LocationPicker = ({ onLocationSelect }) => {
           onChange={handleAddressChange}
           fullWidth
           required
+          error={!address.street}
+          helperText={!address.street ? 'Street is required' : ''}
         />
         <TextField
           label="City"
@@ -131,6 +152,8 @@ const LocationPicker = ({ onLocationSelect }) => {
           value={address.city}
           onChange={handleAddressChange}
           required
+          error={!address.city}
+          helperText={!address.city ? 'City is required' : ''}
         />
         <TextField
           label="State"
@@ -138,6 +161,8 @@ const LocationPicker = ({ onLocationSelect }) => {
           value={address.state}
           onChange={handleAddressChange}
           required
+          error={!address.state}
+          helperText={!address.state ? 'State is required' : ''}
         />
         <TextField
           label="ZIP Code"
@@ -145,12 +170,15 @@ const LocationPicker = ({ onLocationSelect }) => {
           value={address.zipCode}
           onChange={handleAddressChange}
           required
+          error={!address.zipCode}
+          helperText={!address.zipCode ? 'ZIP Code is required' : ''}
         />
       </Box>
       <Button 
         variant="contained" 
         onClick={handleAddressSearch}
         fullWidth
+        disabled={!address.street || !address.city || !address.state}
       >
         Search Location
       </Button>

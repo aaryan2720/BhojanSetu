@@ -8,5 +8,7 @@ router.post('/login', userController.login);
 router.get('/profile', auth, userController.getProfile);
 router.put('/profile', auth, userController.updateProfile);
 router.get('/:userId/rating', userController.getRating);
+router.get('/notification-preferences', auth, userController.getNotificationPreferences);
+router.put('/notification-preferences', auth, userController.updateNotificationPreferences);
 
 module.exports = router; 

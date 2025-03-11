@@ -9,7 +9,7 @@ const userController = {
     try {
       console.log('Received registration data:', req.body);
 
-      const { name, email, password, userType, phone, city, state } = req.body;
+      const { name, email, password, userType, organization, phone, city, state, address } = req.body;
 
       // Log individual fields
       console.log('Required fields:', {
@@ -23,21 +23,16 @@ const userController = {
       });
 
       // Validate required fields
-      if (!name || !email || !password || !userType || !phone || !city || !state) {
-        // Log which fields are missing
-        const missingFields = [];
-        if (!name) missingFields.push('name');
-        if (!email) missingFields.push('email');
-        if (!password) missingFields.push('password');
-        if (!userType) missingFields.push('userType');
-        if (!phone) missingFields.push('phone');
-        if (!city) missingFields.push('city');
-        if (!state) missingFields.push('state');
-
+      if (!name || !email || !password || !userType || !phone) {
         return res.status(400).json({ 
           message: 'Please provide all required fields',
-          missingFields: missingFields,
-          received: req.body
+          missingFields: {
+            name: !name,
+            email: !email,
+            password: !password,
+            userType: !userType,
+            phone: !phone
+          }
         });
       }
 
@@ -49,64 +44,65 @@ const userController = {
       }
 
       // Check if user exists
-      const existingUser = await User.findOne({ email });
-      if (existingUser) {
+      let user = await User.findOne({ email });
+      if (user) {
         return res.status(400).json({ message: 'User already exists' });
       }
 
       // Hash password
-      const hashedPassword = await bcrypt.hash(password, 10);
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(password, salt);
 
-      // Create basic user data
-      const userData = {
+      // Create new user with address
+      user = new User({
         name,
         email,
         password: hashedPassword,
         userType,
+        organization,
         phone,
         address: {
-          city: city || '',
-          state: state || '',
-          street: '',
-          zipCode: ''
+          street: address?.street || '',
+          city: address?.city || '',
+          state: address?.state || '',
+          zipCode: address?.zipCode || '',
+          coordinates: {
+            type: 'Point',
+            coordinates: [0, 0] // Default coordinates
+          }
+        },
+        verificationStatus: userType === 'ngo' ? 'pending' : 'approved'
+      });
+
+      await user.save();
+
+      // Create token
+      const payload = {
+        user: {
+          id: user.id,
+          userType: user.userType
         }
       };
 
-      // Add additional fields for donors and NGOs
-      if (userType === 'donor' || userType === 'ngo') {
-        const { organization, street, zipCode } = req.body;
-        
-        // Validate required fields for donors and NGOs
-        if (!organization || !street || !zipCode) {
-          return res.status(400).json({ 
-            message: 'Organization, street address, and ZIP code are required for donors and NGOs',
-            receivedData: { organization, street, zipCode }
+      jwt.sign(
+        payload,
+        secret,
+        { expiresIn },
+        (err, token) => {
+          if (err) throw err;
+          res.status(201).json({
+            token,
+            user: {
+              id: user._id,
+              name: user.name,
+              email: user.email,
+              userType: user.userType,
+              address: user.address
+            },
+            message: 'Registration successful'
           });
         }
-
-        userData.organization = organization;
-        userData.address.street = street;
-        userData.address.zipCode = zipCode;
-      }
-
-      // Create user
-      const user = new User(userData);
-      await user.save();
-
-      // Generate token
-      const token = jwt.sign(
-        { id: user._id, userType: user.userType },
-        process.env.JWT_SECRET || secret,
-        { expiresIn: '24h' }
       );
-
-      // Return success response
-      res.status(201).json({
-        token,
-        user: user.toJSON(),
-        message: 'Registration successful'
-      });
-
     } catch (error) {
       console.error('Registration error:', error);
       res.status(500).json({ 
@@ -208,6 +204,36 @@ const userController = {
       res.json({ rating: user.rating });
     } catch (error) {
       res.status(500).json({ message: 'Server error' });
+    }
+  },
+
+  async getNotificationPreferences(req, res) {
+    try {
+      const user = await User.findById(req.user.id).select('notificationPreferences');
+      res.json(user.notificationPreferences);
+    } catch (error) {
+      res.status(500).json({ message: 'Error fetching notification preferences' });
+    }
+  },
+
+  async updateNotificationPreferences(req, res) {
+    try {
+      const user = await User.findById(req.user.id);
+      user.notificationPreferences = req.body;
+      await user.save();
+      
+      // Update socket subscriptions if needed
+      const io = req.app.get('io');
+      if (io) {
+        const socket = io.sockets.sockets.get(req.user.id);
+        if (socket) {
+          socket.emit('preferences_updated', user.notificationPreferences);
+        }
+      }
+
+      res.json(user.notificationPreferences);
+    } catch (error) {
+      res.status(500).json({ message: 'Error updating notification preferences' });
     }
   }
 };

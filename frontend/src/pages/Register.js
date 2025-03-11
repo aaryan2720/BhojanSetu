@@ -9,15 +9,16 @@ const Register = () => {
     name: '',
     email: '',
     password: '',
+    confirmPassword: '',
     userType: '',
     organization: '',
+    phone: '',
     address: {
       street: '',
       city: '',
       state: '',
       zipCode: ''
     },
-    phone: '',
     verificationDocument: null
   });
   const [error, setError] = useState('');
@@ -115,21 +116,34 @@ const Register = () => {
             margin="normal"
             required
           />
-          <FormControl fullWidth margin="normal" required>
-            <InputLabel>I am a</InputLabel>
+          <TextField
+            fullWidth
+            label="Confirm Password"
+            name="confirmPassword"
+            type="password"
+            value={formData.confirmPassword}
+            onChange={handleChange}
+            margin="normal"
+            required
+          />
+          <FormControl fullWidth margin="normal">
+            <InputLabel>User Type</InputLabel>
             <Select
               name="userType"
               value={formData.userType}
               onChange={handleChange}
-              label="I am a"
+              required
             >
-              <MenuItem value="seeker">Person Looking for Food</MenuItem>
               <MenuItem value="donor">Food Donor</MenuItem>
-              <MenuItem value="ngo">NGO/Charity Organization</MenuItem>
+              <MenuItem value="ngo">NGO</MenuItem>
+              <MenuItem value="seeker">Food Seeker</MenuItem>
+              <MenuItem value="eventManager">Event Manager</MenuItem>
             </Select>
           </FormControl>
 
-          {(formData.userType === 'donor' || formData.userType === 'ngo') && (
+          {(formData.userType === 'donor' || 
+            formData.userType === 'ngo' || 
+            formData.userType === 'eventManager') && (
             <TextField
               fullWidth
               label="Organization Name"
